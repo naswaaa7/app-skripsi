@@ -44,6 +44,39 @@ df = df.dropna(
 )
 
 # ==========================================
+# 3. ANALISIS KORELASI
+# ==========================================
+
+df_korelasi = df.dropna(
+    subset=[
+        'Penduduk_Miskin (%)',
+        target
+    ]
+)
+
+korelasi_miskin_skor = df_korelasi['Penduduk_Miskin (%)'].corr(
+    df_korelasi[target],
+    method='pearson'
+)
+
+print("\n==============================")
+print("HASIL ANALISIS KORELASI")
+print("==============================")
+print(f"Korelasi Penduduk Miskin terhadap Skor Konsumsi Gizi: {korelasi_miskin_skor:.3f}")
+
+hasil_korelasi = {
+    "Variabel X": "Penduduk_Miskin (%)",
+    "Variabel Y": target,
+    "Metode": "Pearson",
+    "Nilai Korelasi": korelasi_miskin_skor
+}
+
+with open('hasil_korelasi.pkl', 'wb') as f:
+    pickle.dump(hasil_korelasi, f)
+
+print("✅ Hasil korelasi berhasil disimpan!")
+
+# ==========================================
 # 3. FEATURE ENGINEERING
 # ==========================================
 df_model = df[
