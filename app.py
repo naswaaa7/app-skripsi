@@ -230,26 +230,51 @@ def load_default_data():
 df_dummy = load_default_data()
 
 @st.cache_resource
-def load_model_files():
-    try:
-        with open('model_xgboost_skripsi.pkl', 'rb') as f:
-            m = pickle.load(f)
+def load_model_per_provinsi():
+        with open("model_per_provinsi.pkl", "rb") as f:
+            model_per_provinsi = pickle.load(f)
 
-        with open('kolom_fitur_model.pkl', 'rb') as f:
-            c = pickle.load(f)
+        with open("fitur_per_provinsi.pkl", "rb") as f:
+            fitur_per_provinsi = pickle.load(f)
 
-        with open('evaluasi_model.pkl', 'rb') as f:
-            e = pickle.load(f)
+        with open("evaluasi_per_provinsi.pkl", "rb") as f:
+            evaluasi_per_provinsi = pickle.load(f)
 
-        with open('visualisasi_model.pkl', 'rb') as f:
-            v = pickle.load(f)
+        with open("visualisasi_per_provinsi.pkl", "rb") as f:
+            visualisasi_per_provinsi = pickle.load(f)
 
-        return m, c, e, v
+        with open("evaluasi_total_model_per_provinsi.pkl", "rb") as f:
+            evaluasi_total_model_per_provinsi = pickle.load(f)
 
-    except Exception:
-        return None, None, None, None
+        with open("evaluasi_per_tahun_per_provinsi.pkl", "rb") as f:
+            evaluasi_per_tahun_per_provinsi = pickle.load(f)
 
-xgb_model, fitur_model, evaluasi_model, visualisasi_model = load_model_files()
+        with open("visualisasi_per_tahun_per_provinsi.pkl", "rb") as f:
+            visualisasi_per_tahun_per_provinsi = pickle.load(f)
+
+        return (
+            model_per_provinsi,
+            fitur_per_provinsi,
+            evaluasi_per_provinsi,
+            visualisasi_per_provinsi,
+            evaluasi_total_model_per_provinsi,
+            evaluasi_per_tahun_per_provinsi,
+            visualisasi_per_tahun_per_provinsi
+        )
+
+(
+    model_per_provinsi,
+    fitur_per_provinsi,
+    evaluasi_per_provinsi,
+    visualisasi_per_provinsi,
+    evaluasi_total_model_per_provinsi,
+    evaluasi_per_tahun_per_provinsi,
+    visualisasi_per_tahun_per_provinsi
+) = load_model_per_provinsi()
+
+# Alias agar bagian prediksi tetap memakai nama variabel yang sama
+model_provinsi = model_per_provinsi
+fitur_provinsi = fitur_per_provinsi
 
 # ==========================================
 # 4. SESSION STATE AWAL
@@ -391,8 +416,7 @@ if pilihan == "Main Page":
             margin-bottom: 20px;
         ">
             Setelah data berhasil dimuat, pengguna dapat membuka menu Dashboard Visualisasi
-            untuk melihat pola sebaran, tren tahunan, serta hubungan antara tingkat kemiskinan
-            dan capaian konsumsi gizi.
+            untuk melihat pola sebaran hubungan kemiskinan dengan skor gizi, perkembangan gizi tahunan, serta perbandingan skor antar wilayah.
         </p>
 
         <p style="
@@ -408,7 +432,7 @@ if pilihan == "Main Page":
             line-height: 1.8;
             margin-bottom: 0;
         ">
-            Pada menu Prediksi, pengguna dapat memilih kabupaten/kota dan tahun observasi.
+            Pada menu Prediksi, pengguna dapat memilih kabupaten/kota, dan tahun observasi.
             Sistem akan menggunakan model XGBoost untuk menghasilkan prediksi skor konsumsi gizi
             tahun berikutnya.
         </p>
@@ -735,278 +759,440 @@ elif pilihan == "Prediksi":
             1. Skor Aktual adalah nilai konsumsi gizi nyata yang tercatat pada data.
             2. Prediksi XGBoost adalah estimasi nilai konsumsi gizi di masa depan yang dihitung oleh model.
             3. MAE dan RMSE menunjukkan tingkat kesalahan model. Semakin kecil nilainya, semakin baik hasil prediksi.
-            4. R-Squared menunjukkan kemampuan model dalam menjelaskan variasi data.
+            4. R² Score atau koefisien determinasi menunjukkan kemampuan model dalam menjelaskan variasi data.
             """)
 
-        df_prediksi = st.session_state.get('df_aktif', df_dummy)
+        df_prediksi = st.session_state.get('df_aktif', df_dummy).copy()
 
         st.markdown("### Input Parameter Prediksi")
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
         with col1:
-            pilih_kabkota = st.selectbox(
-                "Pilih Kabupaten/Kota:",
-                sorted(df_prediksi['Kabupaten/Kota'].unique().tolist())
+            pilih_provinsi = st.selectbox(
+                "Pilih Provinsi:",
+                sorted(df_prediksi["Provinsi"].dropna().unique().tolist())
             )
+
+        df_provinsi_pilih = df_prediksi[df_prediksi["Provinsi"] == pilih_provinsi]
 
         with col2:
-            pilih_tahun = st.selectbox(
-                "Pilih Tahun Basis:",
-                sorted(df_prediksi['Tahun'].unique().tolist(), reverse=True)
+            pilih_kabkota = st.selectbox(
+                "Pilih Kabupaten/Kota:",
+                sorted(df_provinsi_pilih["Kabupaten/Kota"].dropna().unique().tolist())
             )
 
+        with col3:
+            pilih_tahun = st.selectbox(
+                "Pilih Tahun Dasar:",
+                sorted(df_provinsi_pilih["Tahun"].dropna().unique().tolist(), reverse=True),
+                help="Tahun dasar digunakan sebagai data input aktual. Sistem akan memprediksi Skor Konsumsi Gizi untuk tahun berikutnya."
+            )
+
+        pilih_tahun = int(pilih_tahun)
+        tahun_prediksi = pilih_tahun + 1
+
+        st.info(
+            f"Tahun {pilih_tahun} digunakan sebagai tahun dasar input prediksi. "
+            f"Sistem mengambil data aktual tahun {pilih_tahun}, kemudian menghasilkan prediksi Skor Konsumsi Gizi untuk tahun {tahun_prediksi}."
+        )
+
         if st.button("Proses Prediksi", type="primary", use_container_width=True):
-            if xgb_model is None or fitur_model is None:
+
+            if model_provinsi is None or fitur_provinsi is None:
                 st.error(
-                    "Model gagal dimuat. Pastikan file model_xgboost_skripsi.pkl dan file pickle lainnya berada di folder yang sama."
+                    "Model per provinsi gagal dimuat. Pastikan file model_per_provinsi.pkl, fitur_per_provinsi.pkl, evaluasi_per_provinsi.pkl, dan visualisasi_per_provinsi.pkl berada di folder yang sama."
+                )
+
+            elif pilih_provinsi not in model_provinsi:
+                st.error(
+                    f"Model untuk Provinsi {pilih_provinsi} belum tersedia. Kemungkinan data provinsi tersebut belum cukup atau tidak lengkap."
                 )
 
             else:
-                with st.spinner('Menjalankan algoritma XGBoost...'):
+                with st.spinner("Menjalankan model XGBoost per provinsi..."):
+
                     data_row = df_prediksi[
-                        (df_prediksi['Kabupaten/Kota'] == pilih_kabkota) &
-                        (df_prediksi['Tahun'] == pilih_tahun)
+                        (df_prediksi["Provinsi"] == pilih_provinsi) &
+                        (df_prediksi["Kabupaten/Kota"] == pilih_kabkota) &
+                        (df_prediksi["Tahun"] == pilih_tahun)
                     ]
 
-                    if not data_row.empty:
-                        skor_sekarang = float(data_row['Skor Konsumsi Gizi'].values[0])
-                        miskin_sekarang = float(data_row['Persentase Miskin (%)'].values[0])
-                        provinsi = data_row['Provinsi'].values[0] if 'Provinsi' in data_row.columns else "Banten"
-
-                        input_data = pd.DataFrame(0.0, index=[0], columns=fitur_model)
-
-                        nama_kolom_miskin = (
-                            'Penduduk_Miskin (%)'
-                            if 'Penduduk_Miskin (%)' in fitur_model
-                            else 'Persentase Miskin (%)'
+                    if data_row.empty:
+                        st.warning(
+                            "Data untuk provinsi, kabupaten/kota, dan tahun yang dipilih tidak ditemukan pada dataset."
                         )
-
-                        input_data[nama_kolom_miskin] = miskin_sekarang
-
-                        col_prov_name = f"Provinsi_{provinsi}"
-                        if col_prov_name in input_data.columns:
-                            input_data[col_prov_name] = 1.0
-
+                    else:
                         try:
-                            prediksi = xgb_model.predict(input_data[fitur_model])[0]
+                            skor_sekarang = float(data_row["Skor Konsumsi Gizi"].values[0])
+                            miskin_sekarang = float(data_row["Persentase Miskin (%)"].values[0])
+
+                            model_aktif = model_provinsi[pilih_provinsi]
+                            fitur_aktif = fitur_provinsi[pilih_provinsi]
+
+                            input_data = pd.DataFrame(0.0, index=[0], columns=fitur_aktif)
+
+                            # Tahun yang dimasukkan ke model adalah tahun yang diprediksi
+                            if "Tahun" in input_data.columns:
+                                input_data["Tahun"] = tahun_prediksi
+
+                            if "Penduduk_Miskin (%)" in input_data.columns:
+                                input_data["Penduduk_Miskin (%)"] = miskin_sekarang
+                            elif "Persentase Miskin (%)" in input_data.columns:
+                                input_data["Persentase Miskin (%)"] = miskin_sekarang
+
+                            col_kabkota = f"Kabupaten/Kota_{pilih_kabkota}"
+                            col_kabkota_alt = f"Kabupaten_Kota_{pilih_kabkota}"
+
+                            if col_kabkota in input_data.columns:
+                                input_data[col_kabkota] = 1.0
+                            elif col_kabkota_alt in input_data.columns:
+                                input_data[col_kabkota_alt] = 1.0
+
+                            prediksi = model_aktif.predict(input_data[fitur_aktif])[0]
                             skor_tahun_depan = round(float(prediksi), 2)
                             trend = round(skor_tahun_depan - skor_sekarang, 2)
 
                             st.divider()
                             st.markdown(f"### Hasil Prediksi Wilayah {pilih_kabkota}")
 
-                            out1, out2, out3 = st.columns(3)
-
-                            out1.metric(
-                                f"Skor Aktual ({pilih_tahun})",
-                                f"{skor_sekarang}"
+                            out1, out2, out3, out4 = st.columns(4)
+                            out1.metric("Provinsi", pilih_provinsi)
+                            out2.metric(f"Skor Aktual ({pilih_tahun})", f"{skor_sekarang:.2f}")
+                            out3.metric("Penduduk Miskin", f"{miskin_sekarang:.2f}%")
+                            out4.metric(
+                                f"Prediksi XGBoost ({tahun_prediksi})",
+                                f"{skor_tahun_depan:.2f}",
+                                delta=f"{trend:.2f}"
                             )
 
-                            out2.metric(
-                                "Penduduk Miskin",
-                                f"{miskin_sekarang}%"
-                            )
-
-                            out3.metric(
-                                f"Prediksi XGBoost ({pilih_tahun + 1})",
-                                f"{skor_tahun_depan}",
-                                delta=f"{trend}"
-                            )
-
+                            # ==========================================
+                            # CATATAN ANALISIS
+                            # ==========================================
                             st.markdown("#### Catatan Analisis")
 
-                            if skor_sekarang >= 80:
+                            if skor_tahun_depan >= 80:
+                                kategori = "baik"
                                 st.success(
-                                    f"Kondisi gizi di {pilih_kabkota} terpantau baik dan memenuhi standar kecukupan."
+                                    f"Berdasarkan hasil prediksi model XGBoost untuk Provinsi {pilih_provinsi}, "
+                                    f"Skor Konsumsi Gizi di {pilih_kabkota} pada tahun {tahun_prediksi} "
+                                    f"diperkirakan sebesar {skor_tahun_depan:.2f} dan berada pada kategori baik."
                                 )
-                            elif skor_sekarang >= 70:
+                            elif 70 <= skor_tahun_depan < 80:
+                                kategori = "sedang"
                                 st.warning(
-                                    f"Kondisi gizi di {pilih_kabkota} masuk kategori sedang. Perlu pemantauan agar tidak menurun."
+                                    f"Berdasarkan hasil prediksi model XGBoost untuk Provinsi {pilih_provinsi}, "
+                                    f"Skor Konsumsi Gizi di {pilih_kabkota} pada tahun {tahun_prediksi} "
+                                    f"diperkirakan sebesar {skor_tahun_depan:.2f} dan berada pada kategori sedang."
                                 )
                             else:
+                                kategori = "rendah"
                                 st.error(
-                                    f"Kondisi gizi di {pilih_kabkota} tergolong rendah. Dibutuhkan intervensi program pangan segera."
+                                    f"Berdasarkan hasil prediksi model XGBoost untuk Provinsi {pilih_provinsi}, "
+                                    f"Skor Konsumsi Gizi di {pilih_kabkota} pada tahun {tahun_prediksi} "
+                                    f"diperkirakan sebesar {skor_tahun_depan:.2f} dan berada pada kategori rendah."
                                 )
 
-                            st.success(f"""
-                            Berdasarkan data, tingkat kemiskinan di {pilih_kabkota} dapat memengaruhi daya beli masyarakat terhadap pangan bergizi.
-                            Masyarakat dengan kondisi ekonomi rendah cenderung memilih pangan yang lebih terjangkau,
-                            sehingga skor konsumsi gizi dapat sulit meningkat apabila angka kemiskinan belum ditekan.
-                            """)
+                            if trend > 0:
+                                st.info(
+                                    f"Jika dibandingkan dengan skor aktual tahun {pilih_tahun} sebesar {skor_sekarang:.2f}, "
+                                    f"hasil prediksi menunjukkan peningkatan sebesar {trend:.2f} poin. "
+                                    f"Hal ini menunjukkan adanya potensi perbaikan Skor Konsumsi Gizi pada tahun berikutnya."
+                                )
+                            elif trend < 0:
+                                st.warning(
+                                    f"Jika dibandingkan dengan skor aktual tahun {pilih_tahun} sebesar {skor_sekarang:.2f}, "
+                                    f"hasil prediksi menunjukkan penurunan sebesar {abs(trend):.2f} poin. "
+                                    f"Meskipun hasil prediksi masih berada pada kategori {kategori}, penurunan ini tetap perlu dipantau "
+                                    f"agar kondisi konsumsi gizi tidak terus mengalami penurunan."
+                                )
+                            else:
+                                st.info(
+                                    f"Hasil prediksi menunjukkan bahwa Skor Konsumsi Gizi di {pilih_kabkota} relatif tidak berubah "
+                                    f"dari skor aktual tahun {pilih_tahun} sebesar {skor_sekarang:.2f}."
+                                )
 
+                            # ==========================================
+                            # GRAFIK AKTUAL DAN PREDIKSI WILAYAH
+                            # ==========================================
                             st.divider()
-                            st.subheader("Evaluasi Performa Model")
+                            st.markdown("#### Grafik Aktual dan Prediksi Wilayah")
 
-                            st.warning(
-                                "Perhatian: Nilai metrik MAE, RMSE, dan R-Squared di bawah ini merupakan hasil pengujian model terhadap keseluruhan dataset, bukan evaluasi khusus untuk kabupaten/kota yang sedang dipilih."
+                            tahun_aktual = pilih_tahun
+
+                            df_wilayah = df_prediksi[
+                                (df_prediksi["Provinsi"] == pilih_provinsi) &
+                                (df_prediksi["Kabupaten/Kota"] == pilih_kabkota)
+                            ].copy()
+                            df_wilayah = df_wilayah.sort_values("Tahun")
+
+                            skor_aktual_awal = skor_sekarang
+                            data_aktual_tahun_depan = df_wilayah[
+                                df_wilayah["Tahun"] == tahun_prediksi
+                            ]
+
+                            fig_prediksi_wilayah = go.Figure()
+
+                            if not data_aktual_tahun_depan.empty:
+                                skor_aktual_tahun_depan = float(data_aktual_tahun_depan["Skor Konsumsi Gizi"].values[0])
+                                fig_prediksi_wilayah.add_trace(
+                                    go.Scatter(
+                                        x=[tahun_aktual, tahun_prediksi],
+                                        y=[skor_aktual_awal, skor_aktual_tahun_depan],
+                                        mode="lines+markers",
+                                        name="Skor Aktual",
+                                        line=dict(color="#1f77b4", width=3),
+                                        marker=dict(size=8)
+                                    )
+                                )
+                            else:
+                                fig_prediksi_wilayah.add_trace(
+                                    go.Scatter(
+                                        x=[tahun_aktual],
+                                        y=[skor_aktual_awal],
+                                        mode="markers",
+                                        name="Skor Aktual",
+                                        marker=dict(color="#1f77b4", size=10)
+                                    )
+                                )
+
+                            fig_prediksi_wilayah.add_trace(
+                                go.Scatter(
+                                    x=[tahun_aktual, tahun_prediksi],
+                                    y=[skor_aktual_awal, skor_tahun_depan],
+                                    mode="lines+markers",
+                                    name="Skor Prediksi",
+                                    line=dict(color="#d62728", width=3, dash="dash"),
+                                    marker=dict(size=9)
+                                )
                             )
 
-                            tab1, tab2, tab3 = st.tabs([
-                                "Skenario Split Data 70:30",
-                                "Skenario Split Data 80:20",
-                                "Perbandingan Split Data"
-                            ])
-
-                            with tab1:
-                                c1, c2, c3 = st.columns(3)
-
-                                c1.metric(
-                                    "Mean Absolute Error (MAE)",
-                                    f"{evaluasi_model['70:30']['mae']:.2f}"
+                            fig_prediksi_wilayah.update_layout(
+                                xaxis_title="Tahun",
+                                yaxis_title="Skor Konsumsi Gizi",
+                                height=420,
+                                legend_title_text="Keterangan",
+                                hovermode="x unified",
+                                xaxis=dict(
+                                    tickmode="array",
+                                    tickvals=[tahun_aktual, tahun_prediksi],
+                                    ticktext=[str(tahun_aktual), str(tahun_prediksi)]
                                 )
+                            )
 
-                                c2.metric(
-                                    "Root Mean Squared Error (RMSE)",
-                                    f"{evaluasi_model['70:30']['rmse']:.2f}"
-                                )
+                            st.plotly_chart(fig_prediksi_wilayah, use_container_width=True)
 
-                                c3.metric(
-                                    "R-Squared",
-                                    f"{evaluasi_model['70:30']['r2']:.2f}"
-                                )
+                            with st.expander("Penjelasan Grafik Aktual dan Prediksi Wilayah"):
+                                if not data_aktual_tahun_depan.empty:
+                                    st.write(f"""
+                                    Grafik ini menampilkan perbandingan Skor Konsumsi Gizi dari tahun {tahun_aktual}
+                                    ke tahun {tahun_prediksi}.
 
-                                fig70, ax70 = plt.subplots()
-                                ax70.scatter(
-                                    visualisasi_model['70:30']['y_test'],
-                                    visualisasi_model['70:30']['preds'],
-                                    alpha=0.7,
-                                    color='#4F8A4B'
-                                )
+                                    Garis biru menunjukkan nilai aktual berdasarkan dataset, sedangkan garis merah putus-putus
+                                    menunjukkan hasil prediksi model XGBoost. Grafik ini digunakan untuk melihat apakah arah
+                                    hasil prediksi mendekati perubahan nilai aktual pada satu tahun berikutnya.
 
-                                ax70.plot(
-                                    [
-                                        min(visualisasi_model['70:30']['y_test']),
-                                        max(visualisasi_model['70:30']['y_test'])
-                                    ],
-                                    [
-                                        min(visualisasi_model['70:30']['y_test']),
-                                        max(visualisasi_model['70:30']['y_test'])
-                                    ],
-                                    color='#C7A72C',
-                                    linestyle='--'
-                                )
+                                    Nilai aktual tahun {tahun_aktual} sebesar {skor_aktual_awal:.2f}, sedangkan hasil prediksi
+                                    tahun {tahun_prediksi} sebesar {skor_tahun_depan:.2f}. Selisih antara skor aktual tahun dasar
+                                    dan hasil prediksi adalah {trend:.2f} poin.
+                                    """)
+                                else:
+                                    st.write(f"""
+                                    Grafik ini menampilkan Skor Konsumsi Gizi aktual tahun {tahun_aktual} dan hasil prediksi
+                                    model XGBoost untuk tahun {tahun_prediksi}.
 
-                                ax70.set_xlabel("Nilai Aktual")
-                                ax70.set_ylabel("Nilai Hasil Prediksi")
-                                ax70.set_title("Sebaran Aktual vs Prediksi 70:30")
-                                st.pyplot(fig70)
+                                    Garis merah putus-putus menunjukkan arah prediksi dari tahun {tahun_aktual} menuju tahun
+                                    {tahun_prediksi}. Data aktual tahun {tahun_prediksi} belum tersedia pada dataset, sehingga
+                                    grafik hanya menampilkan titik aktual pada tahun {tahun_aktual} dan garis prediksi menuju
+                                    tahun {tahun_prediksi}.
 
-                                with st.expander("Cara Membaca Grafik 70:30"):
-                                    st.write("""
-                                    Garis putus-putus menunjukkan garis ideal. Jika titik data berada dekat dengan garis tersebut,
-                                    maka hasil prediksi model semakin mendekati nilai aktual. Semakin jauh titik dari garis,
-                                    semakin besar perbedaan antara nilai prediksi dan data aktual.
+                                    Nilai aktual tahun {tahun_aktual} sebesar {skor_aktual_awal:.2f}, sedangkan hasil prediksi
+                                    tahun {tahun_prediksi} sebesar {skor_tahun_depan:.2f}. Selisih antara kedua nilai tersebut
+                                    adalah {trend:.2f} poin.
                                     """)
 
-                            with tab2:
-                                c1, c2, c3 = st.columns(3)
+                            # ==========================================
+                            # EVALUASI PERFORMA MODEL PROVINSI PER TAHUN
+                            # ==========================================
+                            st.divider()
+                            st.markdown("#### Evaluasi Model")
 
-                                c1.metric(
-                                    "Mean Absolute Error (MAE)",
-                                    f"{evaluasi_model['80:20']['mae']:.2f}"
+                            if tahun_prediksi in evaluasi_per_tahun_per_provinsi:
+                                if pilih_provinsi in evaluasi_per_tahun_per_provinsi[tahun_prediksi]:
+                                    eval_p = evaluasi_per_tahun_per_provinsi[tahun_prediksi][pilih_provinsi]
+
+                                    st.info(
+                                        f"Metrik evaluasi ini dihitung berdasarkan data latih **{eval_p['data_latih']}** "
+                                        f"dan data uji aktual tahun **{eval_p['data_uji']}**. "
+                                        f"Nilai evaluasi berubah mengikuti tahun prediksi yang masih memiliki data aktual."
+                                    )
+
+                                    e1, e2, e3, e4, e5 = st.columns(5)
+                                    e1.metric("MAE", f"{eval_p['mae']:.2f}")
+                                    e2.metric("RMSE", f"{eval_p['rmse']:.2f}")
+
+                                    if eval_p["r2"] is not None:
+                                        e3.metric("R² Score", f"{eval_p['r2']:.2f}")
+                                    else:
+                                        e3.metric("R² Score", "Tidak tersedia")
+
+                                    e4.metric("Jumlah Data Latih", eval_p["jumlah_data_train"])
+                                    e5.metric("Jumlah Data Uji", eval_p["jumlah_data_test"])
+                                    # ==========================================
+                                    # GRAFIK EVALUASI MODEL: AKTUAL VS PREDIKSI PER PROVINSI
+                                    # ==========================================
+
+                                    st.markdown("#### Grafik Aktual dan Prediksi Evaluasi Model Per Provinsi")
+
+                                    data_grafik_eval_provinsi = []
+
+                                    # Ambil tahun evaluasi dari hasil evaluasi yang sedang tampil
+                                    tahun_evaluasi = int(eval_p["data_uji"])
+
+                                    if tahun_evaluasi in visualisasi_per_tahun_per_provinsi:
+
+                                        for provinsi_item, nilai_vis in visualisasi_per_tahun_per_provinsi[tahun_evaluasi].items():
+
+                                            if provinsi_item == "TOTAL":
+                                                continue
+
+                                            y_aktual = nilai_vis.get("y_test", [])
+                                            y_prediksi = nilai_vis.get("preds", [])
+
+                                            if len(y_aktual) > 0 and len(y_prediksi) > 0:
+                                                data_grafik_eval_provinsi.append({
+                                                    "Provinsi": provinsi_item,
+                                                    "Rata-rata Aktual": np.mean(y_aktual),
+                                                    "Rata-rata Prediksi": np.mean(y_prediksi)
+                                                })
+
+                                        if len(data_grafik_eval_provinsi) > 0:
+                                            df_eval_provinsi = pd.DataFrame(data_grafik_eval_provinsi)
+
+                                            df_eval_provinsi_long = df_eval_provinsi.melt(
+                                                id_vars="Provinsi",
+                                                value_vars=["Rata-rata Aktual", "Rata-rata Prediksi"],
+                                                var_name="Jenis Nilai",
+                                                value_name="Skor Konsumsi Gizi"
+                                            )
+
+                                            fig_eval_provinsi = px.bar(
+                                                df_eval_provinsi_long,
+                                                x="Provinsi",
+                                                y="Skor Konsumsi Gizi",
+                                                color="Jenis Nilai",
+                                                barmode="group",
+                                                title=f"Perbandingan Rata-rata Aktual dan Prediksi Per Provinsi Tahun {tahun_evaluasi}"
+                                            )
+
+                                            fig_eval_provinsi.update_layout(
+                                                xaxis_title="Provinsi",
+                                                yaxis_title="Rata-rata Skor Konsumsi Gizi",
+                                                xaxis_tickangle=-45,
+                                                height=600,
+                                                legend_title_text="Jenis Nilai"
+                                            )
+
+                                            st.plotly_chart(fig_eval_provinsi, use_container_width=True)
+
+                                            st.info("""
+                                            Grafik ini menampilkan perbandingan rata-rata nilai aktual dan rata-rata nilai prediksi
+                                            Skor Konsumsi Gizi pada setiap provinsi. Nilai rata-rata dihitung dari seluruh
+                                            kabupaten/kota dalam masing-masing provinsi pada tahun uji. Grafik ini digunakan
+                                            agar visualisasi aktual dan prediksi sesuai dengan evaluasi model yang dilakukan
+                                            pada tingkat provinsi.
+                                            """)
+
+                                        else:
+                                            st.warning("Data aktual dan prediksi per provinsi kosong.")
+
+                                    else:
+                                        st.warning(f"Data visualisasi evaluasi tahun {tahun_evaluasi} belum tersedia.")
+                                else:
+                                    st.warning("Evaluasi untuk provinsi ini belum tersedia.")
+                            else:
+                                st.warning(
+                                    f"Evaluasi MAE, RMSE, dan R² untuk prediksi tahun {tahun_prediksi} belum tersedia "
+                                    f"karena data aktual tahun {tahun_prediksi} belum ada pada dataset. "
+                                    f"Hasil prediksi tahun {tahun_prediksi} hanya digunakan sebagai analisis awal."
                                 )
+                                # ==========================================
+                                # GRAFIK AKTUAL VS PREDIKSI UNTUK EVALUASI MODEL
+                                # Rata-rata aktual dan prediksi per provinsi
+                                # ==========================================
 
-                                c2.metric(
-                                    "Root Mean Squared Error (RMSE)",
-                                    f"{evaluasi_model['80:20']['rmse']:.2f}"
-                                )
+                                st.markdown("#### Grafik Aktual dan Prediksi Per Provinsi")
 
-                                c3.metric(
-                                    "R-Squared",
-                                    f"{evaluasi_model['80:20']['r2']:.2f}"
-                                )
+                                # Pastikan tahun prediksi dibuat dari tahun dasar yang dipilih user
+                                tahun_prediksi = int(tahun_pilih) + 1
 
-                                fig80, ax80 = plt.subplots()
-                                ax80.scatter(
-                                    visualisasi_model['80:20']['y_test'],
-                                    visualisasi_model['80:20']['preds'],
-                                    alpha=0.7,
-                                    color='#6FAF65'
-                                )
+                                # Debug kecil untuk cek tahun prediksi
+                                st.caption(f"Tahun evaluasi yang dicek: {tahun_prediksi}")
 
-                                ax80.plot(
-                                    [
-                                        min(visualisasi_model['80:20']['y_test']),
-                                        max(visualisasi_model['80:20']['y_test'])
-                                    ],
-                                    [
-                                        min(visualisasi_model['80:20']['y_test']),
-                                        max(visualisasi_model['80:20']['y_test'])
-                                    ],
-                                    color='#C7A72C',
-                                    linestyle='--'
-                                )
+                                if tahun_prediksi not in visualisasi_per_tahun_per_provinsi:
+                                    st.warning(
+                                        f"Grafik evaluasi belum dapat ditampilkan karena tahun {tahun_prediksi} "
+                                        "belum memiliki data aktual atau belum tersedia pada hasil evaluasi model."
+                                    )
 
-                                ax80.set_xlabel("Nilai Aktual")
-                                ax80.set_ylabel("Nilai Hasil Prediksi")
-                                ax80.set_title("Sebaran Aktual vs Prediksi 80:20")
-                                st.pyplot(fig80)
+                                else:
+                                    data_grafik_evaluasi = []
 
-                                with st.expander("Cara Membaca Grafik 80:20"):
-                                    st.write("""
-                                    Grafik ini menunjukkan perbandingan nilai aktual dan nilai prediksi pada skenario pembagian data 80:20.
-                                    Titik yang semakin dekat dengan garis ideal menunjukkan hasil prediksi yang lebih baik.
-                                    """)
+                                    for nama_provinsi, nilai_vis in visualisasi_per_tahun_per_provinsi[tahun_prediksi].items():
 
-                            with tab3:
-                                st.subheader("Hasil Perbandingan Skenario 70:30 dan 80:20")
-                                st.write(
-                                    "Berikut adalah perbandingan performa model antara dua skenario split data."
-                                )
+                                        if nama_provinsi == "TOTAL":
+                                            continue
 
-                                df_compare = pd.DataFrame({
-                                    "Skenario": ["70:30", "80:20"],
-                                    "MAE": [
-                                        evaluasi_model['70:30']['mae'],
-                                        evaluasi_model['80:20']['mae']
-                                    ],
-                                    "RMSE": [
-                                        evaluasi_model['70:30']['rmse'],
-                                        evaluasi_model['80:20']['rmse']
-                                    ],
-                                    "R-Squared": [
-                                        evaluasi_model['70:30']['r2'],
-                                        evaluasi_model['80:20']['r2']
-                                    ]
-                                })
+                                        nilai_aktual = nilai_vis.get("y_test", [])
+                                        nilai_prediksi = nilai_vis.get("preds", [])
 
-                                st.table(df_compare)
+                                        if len(nilai_aktual) > 0 and len(nilai_prediksi) > 0:
+                                            data_grafik_evaluasi.append({
+                                                "Provinsi": nama_provinsi,
+                                                "Rata-rata Aktual": np.mean(nilai_aktual),
+                                                "Rata-rata Prediksi": np.mean(nilai_prediksi)
+                                            })
 
-                                mae_70 = evaluasi_model['70:30']['mae']
-                                mae_80 = evaluasi_model['80:20']['mae']
+                                    if len(data_grafik_evaluasi) == 0:
+                                        st.warning("Data aktual dan prediksi per provinsi belum tersedia.")
+                                    else:
+                                        df_grafik_evaluasi = pd.DataFrame(data_grafik_evaluasi)
 
-                                r2_70 = evaluasi_model['70:30']['r2']
-                                r2_80 = evaluasi_model['80:20']['r2']
+                                        df_grafik_evaluasi_long = df_grafik_evaluasi.melt(
+                                            id_vars="Provinsi",
+                                            value_vars=["Rata-rata Aktual", "Rata-rata Prediksi"],
+                                            var_name="Jenis Nilai",
+                                            value_name="Skor Konsumsi Gizi"
+                                        )
 
-                                best_scenario = "70:30" if r2_70 > r2_80 else "80:20"
-                                selisih_mae = abs(mae_70 - mae_80)
+                                        fig_evaluasi = px.bar(
+                                            df_grafik_evaluasi_long,
+                                            x="Provinsi",
+                                            y="Skor Konsumsi Gizi",
+                                            color="Jenis Nilai",
+                                            barmode="group",
+                                            title=f"Perbandingan Rata-rata Aktual dan Prediksi Per Provinsi Tahun {tahun_prediksi}"
+                                        )
 
-                                st.markdown("### Analisis Hasil Perbandingan")
+                                        fig_evaluasi.update_layout(
+                                            xaxis_title="Provinsi",
+                                            yaxis_title="Rata-rata Skor Konsumsi Gizi",
+                                            xaxis_tickangle=-45,
+                                            height=550,
+                                            legend_title_text="Jenis Nilai"
+                                        )
 
-                                col1, col2 = st.columns(2)
+                                        st.plotly_chart(fig_evaluasi, use_container_width=True)
 
-                                with col1:
-                                    st.info("""
-                                    MAE dan RMSE digunakan untuk melihat tingkat kesalahan prediksi model.
-                                    Semakin kecil nilainya, maka semakin rendah tingkat kesalahan prediksi.
-                                    R-Squared digunakan untuk melihat kemampuan model dalam menjelaskan variasi data.
-                                    """)
-
-                                with col2:
-                                    st.success(f"""
-                                    Berdasarkan hasil pengujian, skenario {best_scenario} menunjukkan performa yang lebih baik
-                                    karena memiliki nilai R-Squared yang lebih tinggi dibandingkan skenario lainnya.
-                                    """)
-
-                                st.write(f"""
-                                Catatan akademik: Perbedaan MAE sebesar {selisih_mae:.4f} menunjukkan bahwa pembagian data
-                                dapat memengaruhi hasil evaluasi model. Namun, hasil evaluasi tetap perlu dilihat secara menyeluruh,
-                                terutama dari nilai error dan R-Squared.
-                                """)
-
+                                        st.info("""
+                                        Grafik ini menampilkan perbandingan rata-rata nilai aktual dan rata-rata nilai prediksi
+                                        Skor Konsumsi Gizi pada setiap provinsi. Nilai rata-rata dihitung dari seluruh
+                                        kabupaten/kota yang terdapat dalam masing-masing provinsi pada tahun uji.
+                                        Grafik ini digunakan agar visualisasi aktual dan prediksi sesuai dengan evaluasi
+                                        model yang dilakukan pada tingkat provinsi.
+                                        """)
                         except Exception as e:
-                            st.error(f"Terjadi kesalahan saat memproses data prediksi: {e}")
+                            st.error(f"Terjadi kesalahan saat proses prediksi: {e}")
 
 # --- HALAMAN ABOUT ---
 elif pilihan == "About":
@@ -1022,18 +1208,19 @@ elif pilihan == "About":
     with col_latar:
         st.markdown("### Latar Belakang Perancangan")
         st.info("""
-        Kualitas asupan gizi masyarakat sangat dipengaruhi oleh kondisi sosial ekonomi di suatu wilayah.
-        Tingkat kemiskinan sering menjadi salah satu faktor yang membatasi kemampuan rumah tangga dalam
-        mengakses pangan bergizi. Oleh karena itu, penelitian ini mencoba memodelkan hubungan antara angka
-        kemiskinan dan capaian skor konsumsi gizi menggunakan data dari BPS dan Badan Pangan Nasional.
+        Kualitas asupan gizi masyarakat dipengaruhi oleh kondisi sosial ekonomi di suatu wilayah.
+        Tingkat kemiskinan dapat menjadi salah satu faktor yang membatasi kemampuan rumah tangga
+        dalam mengakses pangan bergizi. Oleh karena itu, penelitian ini mencoba memodelkan hubungan
+        antara persentase penduduk miskin dan Skor Konsumsi Gizi menggunakan data dari BPS dan
+        Badan Pangan Nasional.
         """)
 
     with col_tujuan:
         st.markdown("### Tujuan Sistem")
         st.success("""
-        Sistem ini dikembangkan untuk menerjemahkan cara kerja model machine learning ke dalam dashboard
-        yang interaktif dan mudah digunakan. Melalui aplikasi ini, pengguna dapat memantau tren data secara visual
-        sekaligus melakukan simulasi prediksi skor konsumsi gizi di masa mendatang.
+        Sistem ini dikembangkan untuk menampilkan visualisasi data, evaluasi model, dan prediksi
+        Skor Konsumsi Gizi secara interaktif. Melalui aplikasi ini, pengguna dapat melihat pola data
+        berdasarkan wilayah serta melakukan prediksi Skor Konsumsi Gizi untuk tahun berikutnya.
         """)
 
     st.divider()
@@ -1057,18 +1244,29 @@ elif pilihan == "About":
         st.markdown("### Spesifikasi Teknis")
         with st.expander("Lihat Detail Teknologi", expanded=True):
             st.write("**Algoritma Utama:**")
-            st.code("Extreme Gradient Boosting (XGBoost)", language="text")
+            st.code("Extreme Gradient Boosting (XGBoost Regressor)", language="text")
+
+            st.write("**Pembagian Data:**")
+            st.markdown("""
+            - Evaluasi model: data tahun 2021–2022 sebagai data latih dan tahun 2023 sebagai data uji.
+            - Prediksi final: model menggunakan data tahun 2021–2023 untuk menghasilkan prediksi tahun 2024.
+            - Model dibangun per provinsi, sehingga setiap provinsi memiliki model XGBoost masing-masing.
+            """)
 
             st.write("**Metode Evaluasi:**")
             st.markdown("""
-            - Split data: skenario 70:30 dan 80:20.
-            - Metrik evaluasi: MAE, RMSE, dan R-Squared.
+            - MAE
+            - RMSE
+            - R² Score atau koefisien determinasi
             """)
 
             st.write("**Pra-pemrosesan:**")
-            st.write(
-                "Encoding wilayah menggunakan One-Hot Encoding untuk menangani fitur kategorikal."
-            )
+            st.markdown("""
+            - Konversi data numerik.
+            - Pembersihan data kosong.
+            - One-Hot Encoding untuk fitur kabupaten/kota.
+            - Pembagian data berdasarkan tahun.
+            """)
 
     st.divider()
 
