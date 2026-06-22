@@ -1116,26 +1116,23 @@ elif pilihan == "Prediksi":
                                     f"karena data aktual tahun {tahun_prediksi} belum ada pada dataset. "
                                     f"Hasil prediksi tahun {tahun_prediksi} hanya digunakan sebagai analisis awal."
                                 )
-                                # ==========================================
-                                # GRAFIK AKTUAL VS PREDIKSI UNTUK EVALUASI MODEL
-                                # Rata-rata aktual dan prediksi per provinsi
-                                # ==========================================
-
                                 st.markdown("#### Grafik Aktual dan Prediksi Per Provinsi")
 
-                                # Pastikan tahun prediksi dibuat dari tahun dasar yang dipilih user
-                                tahun_prediksi = int(tahun_pilih) + 1
+                                # Tahun evaluasi
+                                tahun_prediksi = int(pilih_tahun) + 1
 
-                                # Debug kecil untuk cek tahun prediksi
-                                st.caption(f"Tahun evaluasi yang dicek: {tahun_prediksi}")
+                                # Jika tahun 2024
+                                if tahun_prediksi == 2024:
 
-                                if tahun_prediksi not in visualisasi_per_tahun_per_provinsi:
-                                    st.warning(
-                                        f"Grafik evaluasi belum dapat ditampilkan karena tahun {tahun_prediksi} "
-                                        "belum memiliki data aktual atau belum tersedia pada hasil evaluasi model."
-                                    )
+                                    st.info("""
+                                    Data aktual tahun 2024 belum tersedia sehingga grafik aktual dan prediksi
+                                    per provinsi belum dapat ditampilkan. Grafik evaluasi hanya tersedia untuk
+                                    tahun yang masih memiliki data aktual, yaitu tahun 2022 dan 2023.
+                                    """)
 
-                                else:
+                                # Jika tahun tersedia pada hasil evaluasi
+                                elif tahun_prediksi in visualisasi_per_tahun_per_provinsi:
+
                                     data_grafik_evaluasi = []
 
                                     for nama_provinsi, nilai_vis in visualisasi_per_tahun_per_provinsi[tahun_prediksi].items():
@@ -1156,6 +1153,7 @@ elif pilihan == "Prediksi":
                                     if len(data_grafik_evaluasi) == 0:
                                         st.warning("Data aktual dan prediksi per provinsi belum tersedia.")
                                     else:
+
                                         df_grafik_evaluasi = pd.DataFrame(data_grafik_evaluasi)
 
                                         df_grafik_evaluasi_long = df_grafik_evaluasi.melt(
@@ -1174,26 +1172,15 @@ elif pilihan == "Prediksi":
                                             title=f"Perbandingan Rata-rata Aktual dan Prediksi Per Provinsi Tahun {tahun_prediksi}"
                                         )
 
-                                        fig_evaluasi.update_layout(
-                                            xaxis_title="Provinsi",
-                                            yaxis_title="Rata-rata Skor Konsumsi Gizi",
-                                            xaxis_tickangle=-45,
-                                            height=550,
-                                            legend_title_text="Jenis Nilai"
-                                        )
-
                                         st.plotly_chart(fig_evaluasi, use_container_width=True)
 
-                                        st.info("""
-                                        Grafik ini menampilkan perbandingan rata-rata nilai aktual dan rata-rata nilai prediksi
-                                        Skor Konsumsi Gizi pada setiap provinsi. Nilai rata-rata dihitung dari seluruh
-                                        kabupaten/kota yang terdapat dalam masing-masing provinsi pada tahun uji.
-                                        Grafik ini digunakan agar visualisasi aktual dan prediksi sesuai dengan evaluasi
-                                        model yang dilakukan pada tingkat provinsi.
-                                        """)
-                        except Exception as e:
-                            st.error(f"Terjadi kesalahan saat proses prediksi: {e}")
+                                else:
 
+                                    st.warning(
+                                        f"Grafik evaluasi untuk tahun {tahun_prediksi} belum tersedia."
+                                    )
+                        except Exception as e:
+                                    st.error(f"Terjadi kesalahan saat proses prediksi: {e}")
 # --- HALAMAN ABOUT ---
 elif pilihan == "About":
     st.title("Tentang Sistem dan Peneliti")
